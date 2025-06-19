@@ -3,15 +3,7 @@ import numpy as np
 
 # Названия и ссылки камер
 CAMERAS = {
-    "Серверная":      "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/202",
-    "Лестница (лев)": "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/302",
-    "Лестница (прав)": "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/602",
-    "Техники":        "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/1002",
-    "Энергоцентр":    "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/2102",
-    "Руководство":    "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/2302",
-    "Бухгалтерия":    "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/2402",
-    "Мастерская":     "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/2502",
-    "Коридор":        "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/2602"
+
 }
 
 # Размер превью каждой камеры

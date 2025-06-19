@@ -57,8 +57,8 @@ SafeMonitor/
 ## 🧪 Пример main_manual.json
 ```commandline
 {
-  "Серверная": "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/202",
-  "Лестница (лев)": "rtsp://web:Triton2073@10.15.13.252:554/Streaming/Channels/302"
+  "Серверная": "rtsp://web:passwrd@192.168.13.252:554/Streaming/Channels/202",
+  "Лестница (лев)": "rtsp://web:passwrd@192.168.13.252:554/Streaming/Channels/302"
 }
 
 ```
