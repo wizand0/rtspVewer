@@ -3,11 +3,13 @@ import sys
 import json
 import subprocess
 
+sys.argv.append("Camera Monitor")
+
 # Переключение в директорию проекта
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def run_viewer(config_path):
-    subprocess.run([sys.executable, "multi_rtsp_viewer.py", config_path])
+    subprocess.run([sys.executable, "multi_rtsp_viewer.py", "--camera-monitor", config_path])
 
 def run_refresh():
     subprocess.run([sys.executable, "refresh_config.py"])

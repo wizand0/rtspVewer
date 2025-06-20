@@ -8,7 +8,9 @@ import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-CONFIG_PATH = sys.argv[1] if len(sys.argv) > 1 else "config.json"
+monitoring_enabled = "--camera-monitor" in sys.argv
+args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
+CONFIG_PATH = args[0] if args else "config.json"
 
 if not os.path.exists(CONFIG_PATH):
     print(f"[ERROR] Config not found: {CONFIG_PATH}")
@@ -21,7 +23,7 @@ if not CAMERAS:
     print("[WARNING] Config is empty.")
     exit(1)
 
-WIDTH, HEIGHT = 320, 240
+WIDTH, HEIGHT = 320, 240  # Сниженное разрешение
 
 os.makedirs("logs", exist_ok=True)
 log_path = "logs/disconnects.log"
@@ -32,9 +34,12 @@ def log_event(text: str):
         log_file.write(f"{timestamp} {text}\n")
     print(f"{timestamp} {text}")
 
-def draw_label(frame, text, status_ok=True):
+def draw_label(frame, text, status_ok=True, latency=None):
     cv2.putText(frame, text, (28, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                 (255, 255, 255), 1, cv2.LINE_AA)
+    if latency is not None:
+        cv2.putText(frame, f"{latency:.1f}s", (WIDTH - 70, HEIGHT - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 0), 1, cv2.LINE_AA)
     color = (0, 255, 0) if status_ok else (0, 0, 255)
     cv2.circle(frame, (10, 15), 6, color, -1)
     return frame
@@ -46,13 +51,23 @@ class CameraStream:
         self.container = None
         self.connected = False
         self.last_frame = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
+        self.last_pts = None
         self.reconnect()
 
     def reconnect(self):
         try:
             if self.container:
                 self.container.close()
-            self.container = av.open(self.url, options={"rtsp_transport": "tcp", "max_delay": "500000"})
+
+            options = {
+                # "rtsp_transport": "udp",  # включить для теста UDP
+                "rtsp_transport": "tcp",    # по умолчанию TCP
+                "fflags": "nobuffer",
+                "flags": "low_delay",
+                "max_delay": "100000"
+            }
+
+            self.container = av.open(self.url, options=options)
             self.stream = self.container.streams.video[0]
             self.stream.thread_type = 'AUTO'
             self.connected = True
@@ -65,40 +80,52 @@ class CameraStream:
         if not self.connected:
             self.reconnect()
             time.sleep(0.2)
-            return False, self.last_frame
+            return False, self.last_frame, None
 
+        latest_frame = None
         try:
+            deadline = time.time() + 0.08  # максимум 80 мс
             for packet in self.container.demux(self.stream):
                 for frame in packet.decode():
-                    img = frame.to_ndarray(format='bgr24')
-                    resized = cv2.resize(img, (WIDTH, HEIGHT))
-                    self.last_frame = resized
-                    return True, resized
+                    latest_frame = frame
+                if latest_frame and time.time() > deadline:
+                    break
+
+            if latest_frame:
+                img = latest_frame.to_ndarray(format='bgr24')
+                resized = cv2.resize(img, (WIDTH, HEIGHT), interpolation=cv2.INTER_NEAREST)
+                self.last_frame = resized
+
+                # Вычисление задержки по PTS
+                pts_time = float(latest_frame.pts * latest_frame.time_base) if latest_frame.pts else None
+                if pts_time:
+                    latency = time.time() - pts_time
+                    return True, resized, latency
+                else:
+                    return True, resized, None
         except Exception as e:
             log_event(f"[ERROR] {self.name}: {e}")
             self.connected = False
-            return False, self.last_frame
+            return False, self.last_frame, None
 
-        return False, self.last_frame
+        return False, self.last_frame, None
 
     def release(self):
         if self.container:
             self.container.close()
 
 streams = [CameraStream(name, url) for name, url in CAMERAS.items()]
-
 camera_count = len(streams)
-if camera_count <= 4:
-    COLS, ROWS = 2, 2
-else:
-    COLS, ROWS = 3, 3
-
+COLS, ROWS = (2, 2) if camera_count <= 4 else (3, 3)
 PAGE_SIZE = COLS * ROWS
 page = 0
 total_pages = (camera_count + PAGE_SIZE - 1) // PAGE_SIZE
 
 cv2.namedWindow("Camera Monitor", cv2.WINDOW_NORMAL)
 fullscreen = False
+TARGET_FPS = 10
+FRAME_DELAY = 1 / TARGET_FPS
+executor = ThreadPoolExecutor(max_workers=PAGE_SIZE)
 
 while True:
     start = page * PAGE_SIZE
@@ -106,14 +133,11 @@ while True:
     visible_streams = streams[start:end]
 
     def process_stream(stream):
-        ret, frame = stream.read()
-        frame = cv2.resize(frame, (WIDTH, HEIGHT), interpolation=cv2.INTER_NEAREST)
+        ret, frame, latency = stream.read()
         label = stream.name if ret else f"{stream.name}: no signal"
-        return draw_label(frame, label, ret)
+        return draw_label(frame, label, ret, latency)
 
-    with ThreadPoolExecutor(max_workers=PAGE_SIZE) as executor:
-        frames = list(executor.map(process_stream, visible_streams))
-
+    frames = list(executor.map(process_stream, visible_streams))
     rows = [np.hstack(frames[i:i + COLS]) for i in range(0, len(frames), COLS)]
     grid = np.vstack(rows)
 
@@ -122,7 +146,9 @@ while True:
 
     cv2.imshow("Camera Monitor", grid)
 
-    key = cv2.waitKey(100) & 0xFF
+    key = cv2.waitKey(1) & 0xFF
+    time.sleep(FRAME_DELAY)
+
     if key == ord('q'):
         break
     elif key == ord('f'):
@@ -143,4 +169,5 @@ while True:
 
 for stream in streams:
     stream.release()
+executor.shutdown()
 cv2.destroyAllWindows()
