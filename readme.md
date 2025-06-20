@@ -50,19 +50,14 @@
 - **Память**
 - **Потоки**
 
-<details>
-<summary><b>Нажмите, чтобы раскрыть сравнение</b></summary>
+### CPU
+![CPU Comparison](images/comparison_cpu.png)
 
-### 📈 CPU
-<img src="images/comparison_cpu.png" width="100%">
+### Memory
+![Memory Comparison](images/comparison_mem.png)
 
-### 💾 Memory
-<img src="images/comparison_mem.png" width="100%">
-
-### 🧵 Threads
-<img src="images/comparison_threads.png" width="100%">
-
-</details>
+### Threads
+![Threads Comparison](images/comparison_threads.png)
 
 ---
 
