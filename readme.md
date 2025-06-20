@@ -37,6 +37,16 @@ chmod +x run_cli.sh
 ./run_cli.sh
 ```
 
+### Запуск определенного конфига:
+```commandline
+python multi_rtsp_viewer.py configs/main_manual.json
+```
+
+### **refresh_config.py** Скрипт для: проверки всех потоков из .json; исключения неработающих камер;
+```commandline
+python multi_rtsp_viewer.py configs/main_manual.json
+```
+
 ## 📁 Структура проекта
 
 ```commandline

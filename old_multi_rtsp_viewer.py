@@ -1,4 +1,3 @@
-import av
 import cv2
 import numpy as np
 import datetime
@@ -43,59 +42,51 @@ class CameraStream:
     def __init__(self, name, url):
         self.name = name
         self.url = url
-        self.container = None
+        self.cap = None
         self.connected = False
-        self.last_frame = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
-        self.reconnect()
+        self.connect()
 
-    def reconnect(self):
-        try:
-            if self.container:
-                self.container.close()
-            self.container = av.open(self.url, options={"rtsp_transport": "tcp", "max_delay": "500000"})
-            self.stream = self.container.streams.video[0]
-            self.stream.thread_type = 'AUTO'
-            self.connected = True
+    def connect(self):
+        if self.cap:
+            self.cap.release()
+        self.cap = cv2.VideoCapture(self.url)
+        self.connected = self.cap.isOpened()
+        if self.connected:
             log_event(f"[CONNECTED] {self.name}")
-        except Exception as e:
-            self.connected = False
-            log_event(f"[DISCONNECTED] {self.name} - {e}")
+            for _ in range(5):  # Прогрев — получаем ключевые кадры
+                self.cap.read()
+                time.sleep(0.1)
 
     def read(self):
-        if not self.connected:
-            self.reconnect()
-            time.sleep(0.2)
-            return False, self.last_frame
-
-        try:
-            for packet in self.container.demux(self.stream):
-                for frame in packet.decode():
-                    img = frame.to_ndarray(format='bgr24')
-                    resized = cv2.resize(img, (WIDTH, HEIGHT))
-                    self.last_frame = resized
-                    return True, resized
-        except Exception as e:
-            log_event(f"[ERROR] {self.name}: {e}")
+        if not self.cap or not self.cap.isOpened():
             self.connected = False
-            return False, self.last_frame
+            self.connect()
+            time.sleep(0.2)
+            return False, np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
 
-        return False, self.last_frame
+        for _ in range(3):
+            ret, frame = self.cap.read()
+            if ret and frame is not None:
+                if not self.connected:
+                    log_event(f"[RECOVERED] {self.name}")
+                self.connected = True
+                return True, frame
+            time.sleep(0.05)
+
+        if self.connected:
+            log_event(f"[DISCONNECTED] {self.name}")
+        self.connected = False
+        return False, np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
 
     def release(self):
-        if self.container:
-            self.container.close()
+        if self.cap:
+            self.cap.release()
 
 streams = [CameraStream(name, url) for name, url in CAMERAS.items()]
 
-camera_count = len(streams)
-if camera_count <= 4:
-    COLS, ROWS = 2, 2
-else:
-    COLS, ROWS = 3, 3
-
-PAGE_SIZE = COLS * ROWS
+PAGE_SIZE = 9
 page = 0
-total_pages = (camera_count + PAGE_SIZE - 1) // PAGE_SIZE
+total_pages = (len(streams) + PAGE_SIZE - 1) // PAGE_SIZE
 
 cv2.namedWindow("Camera Monitor", cv2.WINDOW_NORMAL)
 fullscreen = False
@@ -111,10 +102,11 @@ while True:
         label = stream.name if ret else f"{stream.name}: no signal"
         return draw_label(frame, label, ret)
 
-    with ThreadPoolExecutor(max_workers=PAGE_SIZE) as executor:
+    with ThreadPoolExecutor(max_workers=9) as executor:
         frames = list(executor.map(process_stream, visible_streams))
 
-    rows = [np.hstack(frames[i:i + COLS]) for i in range(0, len(frames), COLS)]
+    cols = 3
+    rows = [np.hstack(frames[i:i+cols]) for i in range(0, len(frames), cols)]
     grid = np.vstack(rows)
 
     cv2.putText(grid, f"Page {page + 1}/{total_pages}", (10, grid.shape[0] - 10),
@@ -133,13 +125,6 @@ while True:
         page = (page + 1) % total_pages
     elif key == 81 or key == ord('a'):
         page = (page - 1 + total_pages) % total_pages
-    elif key == ord('p'):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"screenshot_{page+1}_{timestamp}.jpg"
-        os.makedirs("screenshots", exist_ok=True)
-        filepath = os.path.join("screenshots", filename)
-        cv2.imwrite(filepath, grid)
-        print(f"[{timestamp}] Скриншот сохранён: {filepath}")
 
 for stream in streams:
     stream.release()
