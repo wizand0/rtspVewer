@@ -1,74 +1,63 @@
-import os
-import sys
-import json
 import subprocess
+import sys
+import os
+import json
 
-sys.argv.append("Camera Monitor")
-
-# Переключение в директорию проекта
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-def run_viewer(config_path):
-    subprocess.run([sys.executable, "multi_rtsp_viewer.py", "--camera-monitor", config_path])
-
-def run_refresh():
-    subprocess.run([sys.executable, "refresh_config.py"])
-
-def select_other_config():
-    config_dir = "configs"
-    if not os.path.exists(config_dir):
-        os.makedirs(config_dir)
-        print("Создана папка configs. Добавьте туда .json конфигурации.")
-        return
-
-    files = [f for f in os.listdir(config_dir) if f.endswith(".json")]
-    if not files:
-        print("⚠️ Нет доступных конфигураций в папке configs.")
-        return
-
-    print("\n📂 Доступные конфигурации:")
-    for i, f in enumerate(files):
-        print(f"{i + 1}. {f}")
-
-    choice = input("Выберите файл: ")
-    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(files):
-        print("❌ Неверный выбор.")
-        return
-
-    selected = os.path.join(config_dir, files[int(choice) - 1])
-    run_viewer(selected)
+CONFIG_DIR = "configs"
+CONFIG_OPTIONS = {
+    "1": "main_manual.json",
+    "2": "main_enter.json"
+}
 
 def main():
     while True:
         print("\n==== SafeMonitor CLI Menu ====")
         print("1. View main cameras (main_manual.json)")
-        print("2. View entry cameras (main_enter.json)")  # ← новое
+        print("2. View entry cameras (main_enter.json)")
         print("3. View other config")
-        print("4. Refresh config (check streams)")
-        print("5. Exit")
-        choice = input("Enter your choice: ")
+        print("4. Add new registrator")
+        print("5. Refresh config (check streams)")
+        print("6. Exit")
 
-        if choice == "1":
-            if not os.path.exists("configs/main_manual.json"):
-                print("❗ configs/main_manual.json не найден.")
-            else:
-                run_viewer("configs/main_manual.json")
+        choice = input("Enter your choice: ").strip()
 
-        elif choice == "2":
-            if not os.path.exists("configs/main_enter.json"):
-                print("❗ configs/main_enter.json не найден.")
-            else:
-                run_viewer("configs/main_enter.json")
+        if choice in ["1", "2"]:
+            config_name = CONFIG_OPTIONS[choice]
+            config_path = os.path.join(CONFIG_DIR, config_name)
+            if not os.path.exists(config_path):
+                print(f"[ERROR] Config not found: {config_path}")
+                continue
+
+            print(f"✅ Loaded config: {config_path} with {count_streams(config_path)} streams")
+            subprocess.run([sys.executable, "multi_rtsp_viewer_qt.py", config_path])
 
         elif choice == "3":
-            select_other_config()
+            path = input("Enter path to config: ").strip()
+            if not os.path.exists(path):
+                print(f"[ERROR] File not found: {path}")
+                continue
+            print(f"✅ Loaded config: {path} with {count_streams(path)} streams")
+            subprocess.run([sys.executable, "multi_rtsp_viewer_qt.py", path])
+
         elif choice == "4":
-            run_refresh()
+            subprocess.run([sys.executable, "add_registrator.py"])
+
         elif choice == "5":
-            print("👋 Выход...")
+            subprocess.run([sys.executable, "refresh_config.py"])
+
+        elif choice == "6":
+            print("👋 Bye!")
             break
+
         else:
-            print("❌ Неверный выбор.")
+            print("❌ Invalid choice.")
+
+def count_streams(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return len(json.load(f))
+    except Exception:
+        return 0
 
 if __name__ == "__main__":
     main()
